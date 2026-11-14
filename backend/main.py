@@ -9,9 +9,11 @@ import asyncio
 import os
 import sys
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+from science.similarity import similarity_search
 
 # Setup uvloop event loop policy for high performance on Unix
 if sys.platform != "win32":
@@ -70,6 +72,30 @@ async def health_check() -> JSONResponse:
             "version": "1.0.0",
         },
     )
+
+
+@app.post("/api/subjects/similar")
+async def subject_similarity(payload: dict) -> dict:
+    """Compute in-memory cosine similarity matches against the pre-loaded spectral library."""
+    try:
+        query = payload.get("query")
+        if query is None:
+            for key in ("spectrum", "flux", "values", "vector", "spectrum_array"):
+                if key in payload:
+                    query = payload[key]
+                    break
+        if query is None:
+            raise KeyError("No spectral vector was provided.")
+        result = similarity_search(query, k=int(payload.get("k", 5)))
+        return {
+            "matches": result["matches"],
+            "results": result["matches"],
+            "top_matches": result["matches"],
+            "status": "ok",
+            "count": len(result["matches"]),
+        }
+    except (TypeError, ValueError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 if __name__ == "__main__":
